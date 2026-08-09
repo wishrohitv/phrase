@@ -1,4 +1,5 @@
 import traceback
+from logging import getLogger
 
 import jwt
 from fastapi import Cookie, Depends, Header
@@ -13,6 +14,8 @@ from utils.errors import (
     UnauthorizedException,
 )
 from utils.jwt_token import decode_jwt_token
+
+logger = getLogger(__name__)
 
 
 def auth_middleware(
@@ -46,12 +49,13 @@ def auth_middleware(
         return user
 
     except jwt.ExpiredSignatureError:
+        logger.info("Access token expired")
         raise UnauthorizedException("Access token expired")
 
-    except jwt.InvalidTokenError as e:
-        print(e)
+    except jwt.InvalidTokenError:
+        logger.info("Invalid access token")
         raise UnauthorizedException("Invalid access token")
 
-    except Exception as _:  # noqa: BLE001
-        traceback.print_exc()
+    except Exception:
+        logger.exception("Error while validating access token")
         raise InternalServerErrorException("Error while validating access token")
