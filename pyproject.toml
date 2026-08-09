@@ -1,0 +1,18 @@
+[project]
+name = "phrase-backend"
+version = "0.1.0"
+authors = [
+    { name = "wishrohitv", email = "wishrohitv@outlook.com" }
+]
+description = "backend for Phrase"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "fastapi[standard]>=0.139.0",
+    "openrouter>=0.11.44",
+    "psycopg[binary]>=3.3.4",
+    "pyjwt>=2.13.0",
+    "requests>=2.34.2",
+    "sqlalchemy>=2.0.51",
+]
