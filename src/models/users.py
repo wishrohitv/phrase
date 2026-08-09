@@ -1,7 +1,7 @@
 from sqlalchemy import TIMESTAMP, Boolean, Enum, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.utils.datetime_utc import datetime, datetime_utc_now
+from utils.datetime_utc import datetime, datetime_utc_now
 
 from .base import Base
 from .enums import AccountStatus, ProviderType, UserRole

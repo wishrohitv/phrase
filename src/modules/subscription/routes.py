@@ -3,13 +3,13 @@ import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from src.database import get_db
-from src.middlewares.auth_middleware import auth_middleware
-from src.models.enums import PlansStatus
-from src.models.plans import Plans
-from src.models.users import UserRole, Users
-from src.utils.errors import BadRequestException, InternalServerErrorException
-from src.utils.success import Success
+from database import get_db
+from middlewares.auth_middleware import auth_middleware
+from models.enums import PlansStatus
+from models.plans import Plans
+from models.users import UserRole, Users
+from utils.errors import BadRequestException, InternalServerErrorException
+from utils.success import Success
 
 from .pydantic_schema import EditPlansSchema, PlansSchema
 

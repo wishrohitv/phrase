@@ -6,8 +6,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-from src.models.enums import DiscoverType
-from src.settings import settings
+from models.enums import DiscoverType
+from settings import settings
 
 from .base_fetch import FetchSubtitle
 

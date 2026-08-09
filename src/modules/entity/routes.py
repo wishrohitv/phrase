@@ -2,11 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from src.middlewares.auth_middleware import auth_middleware
-from src.models.entity import Entity
-from src.models.enums import DiscoverType
-from src.models.translations import Translation
-from src.services.fetch_subtitles import OPENSUBTITLE, SUBDL
+from middlewares.auth_middleware import auth_middleware
+from models.entity import Entity
+from models.enums import DiscoverType
+from models.translations import Translation
+from services.fetch_subtitles import OPENSUBTITLE, SUBDL
 
 from .pydantic_shcema import SearchValueSchema
 

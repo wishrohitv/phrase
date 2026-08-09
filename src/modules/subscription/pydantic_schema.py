@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from src.models.enums import PlansStatus
+from models.enums import PlansStatus
 
 
 class PlansSchema(BaseModel):

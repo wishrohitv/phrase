@@ -1,7 +1,7 @@
 from sqlalchemy import ARRAY, JSON, TIMESTAMP, Enum, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.utils.datetime_utc import datetime, datetime_utc_now
+from utils.datetime_utc import datetime, datetime_utc_now
 
 from .base import Base
 from .enums import Language

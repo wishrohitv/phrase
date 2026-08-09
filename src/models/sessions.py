@@ -7,7 +7,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
-from src.utils.datetime_utc import datetime, datetime_utc_now
+from utils.datetime_utc import datetime, datetime_utc_now
 
 from .base import Base
 

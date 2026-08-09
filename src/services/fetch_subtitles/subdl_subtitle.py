@@ -1,6 +1,6 @@
 import requests
 
-from src.settings import settings
+from settings import settings
 
 from .base_fetch import FetchSubtitle
 

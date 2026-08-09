@@ -5,19 +5,19 @@ import jwt
 from fastapi import APIRouter, Cookie, Depends, Header
 from sqlalchemy.orm import Session
 
-from src.database import get_db
-from src.middlewares.auth_middleware import auth_middleware
-from src.models.sessions import Sessions
-from src.models.users import Users
-from src.settings import settings
-from src.utils.errors import (
+from database import get_db
+from middlewares.auth_middleware import auth_middleware
+from models.sessions import Sessions
+from models.users import Users
+from settings import settings
+from utils.errors import (
     BadRequestException,
     HTTPException,
     InternalServerErrorException,
     UnauthorizedException,
 )
-from src.utils.jwt_token import create_jwt_token, decode_jwt_token
-from src.utils.success import Success
+from utils.jwt_token import create_jwt_token, decode_jwt_token
+from utils.success import Success
 
 from .pydantic_schema import UserLoginSchema, UserRegisterSchema
 

@@ -4,15 +4,15 @@ import jwt
 from fastapi import Cookie, Depends, Header
 from sqlalchemy.orm import Session
 
-from src.database import get_db
-from src.models.users import Users
-from src.settings import settings
-from src.utils.errors import (
+from database import get_db
+from models.users import Users
+from settings import settings
+from utils.errors import (
     BadRequestException,
     InternalServerErrorException,
     UnauthorizedException,
 )
-from src.utils.jwt_token import decode_jwt_token
+from utils.jwt_token import decode_jwt_token
 
 
 def auth_middleware(

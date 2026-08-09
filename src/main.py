@@ -3,14 +3,13 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 
-from src.models.base import Base
-from src.modules.auth.routes import auth
-from src.modules.entity.routes import entity
-from src.modules.subscription.routes import subscription
-from src.modules.users.routes import users
-from src.utils import BadRequestException
-
-from .database import engine
+from database import engine
+from models.base import Base
+from modules.auth.routes import auth
+from modules.entity.routes import entity
+from modules.subscription.routes import subscription
+from modules.users.routes import users
+from utils import BadRequestException
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
