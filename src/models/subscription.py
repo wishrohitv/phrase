@@ -16,6 +16,6 @@ class Subscription(Base):
     plan: Mapped[int] = mapped_column(ForeignKey("plans.id"), nullable=False)
     plan_status: Mapped[SubscriptionStatus] = mapped_column(Enum(SubscriptionStatus))
     next_due: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
-    created_at: [datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime_utc_now
     )
