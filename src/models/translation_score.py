@@ -9,5 +9,5 @@ class TranslationScore(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     translation_id: Mapped[int] = mapped_column(ForeignKey("translations.id"))
-    score: Mapped[float] = mapped_column(Float, nullable=True)  # Between 0 to 10
-    like: Mapped[int] = mapped_column(Integer, nullable=True)  # 0 or 1
+    score: Mapped[float | None] = mapped_column(Float)  # Between 0 to 10
+    like: Mapped[int | None] = mapped_column(Integer)  # 0 or 1

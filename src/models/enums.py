@@ -23,7 +23,7 @@ class ProviderType(str, PyEnum):
 class EntityType(str, PyEnum):
     MOVIE = "movie"
     TVSHOW = "tvshow"
-    WEBSERIES = "webseries"
+    EPISODE = "episode"
 
 
 class Language(str, PyEnum):
@@ -125,4 +125,3 @@ class PlansStatus(str, PyEnum):
 class DiscoverType(str, PyEnum):
     POPULAR = "popular"
     LATEST = "latest"
-    MOST_DOWNLOADED = "most_downloaded"

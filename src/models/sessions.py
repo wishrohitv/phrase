@@ -1,6 +1,5 @@
 from sqlalchemy import (
     TIMESTAMP,
-    Boolean,
     ForeignKey,
     Integer,
     String,
@@ -17,8 +16,8 @@ class Sessions(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    refresh_token: Mapped[str] = mapped_column(
-        String(255), unique=True, nullable=True, index=True
+    refresh_token: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime_utc_now

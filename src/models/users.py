@@ -12,8 +12,8 @@ class Users(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(50), nullable=True)
-    password: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    name: Mapped[str | None] = mapped_column(String(50))
+    password: Mapped[bytes | None] = mapped_column(LargeBinary)
     provider: Mapped[ProviderType] = mapped_column(
         Enum(ProviderType), default=ProviderType.LOCAL
     )
@@ -24,16 +24,14 @@ class Users(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.USER)
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
-    deleted_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
-    suspension_start_date: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
+    suspension_start_date: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True)
     )
-    suspension_reason: Mapped[str] = mapped_column(String(255), nullable=True)
-    suspension_end_date: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
+    suspension_reason: Mapped[str | None] = mapped_column(String(255))
+    suspension_end_date: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True)
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime_utc_now

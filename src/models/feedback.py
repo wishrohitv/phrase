@@ -1,7 +1,7 @@
-from .base import Base
-
-from sqlalchemy import Integer, ForeignKey
+from sqlalchemy import ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column
+
+from .base import Base
 
 
 class Feedback(Base):
