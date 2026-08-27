@@ -9,7 +9,7 @@ from .enums import EntityType
 
 class Title(Base):
     """
-    Title is parent table that holds title and imdb and content type [movies, series, tvshows]
+    Title is parent table that holds title and parent imdb and content type [movies, series, tvshows]. In case for movies parent imdb will be the same as child
     and its children database that will hold detailed data about content with unique id for each show's translations
 
     """
@@ -19,7 +19,7 @@ class Title(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     type: Mapped[EntityType] = mapped_column(Enum(EntityType))
     name: Mapped[str] = mapped_column(String(100))
-    imdb: Mapped[str] = mapped_column(String(22), index=True)
+    parent_imdb: Mapped[str] = mapped_column(String(22), index=True)
     # TODO: add language enum
     language: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)
