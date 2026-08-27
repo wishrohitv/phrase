@@ -8,8 +8,14 @@ wheels/
 
 # Virtual environments
 .venv/
+# Ruff
+.ruff_cache
 
 # Env
 
 **/.env
 **/secrets.txt
+
+# DB migrations
+alembic/
+alembic.ini
