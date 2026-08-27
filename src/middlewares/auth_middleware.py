@@ -1,4 +1,3 @@
-import traceback
 from logging import getLogger
 
 import jwt
@@ -22,7 +21,7 @@ def auth_middleware(
     authorization: str | None = Header(None),
     access_token: str = Cookie(None),
     db: Session = Depends(get_db),  # noqa: B008
-):
+) -> Users:
 
     try:
         if authorization:
