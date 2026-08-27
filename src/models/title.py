@@ -1,4 +1,5 @@
-from sqlalchemy import Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import Enum, ForeignKey, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from utils.datetime_utc import datetime, datetime_utc_now
@@ -19,6 +20,7 @@ class Title(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     type: Mapped[EntityType] = mapped_column(Enum(EntityType))
     name: Mapped[str] = mapped_column(String(100))
+    alt_name: Mapped[str] = mapped_column(JSONB(none_as_null=True))
     parent_imdb: Mapped[str] = mapped_column(String(22), index=True)
     # TODO: add language enum
     language: Mapped[str] = mapped_column(String(16))
