@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from sqlalchemy import ARRAY, JSONB, TIMESTAMP, Enum, Text, Uuid
+from sqlalchemy import ARRAY, TIMESTAMP, Enum, Text, Uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from utils.datetime_utc import datetime, datetime_utc_now
