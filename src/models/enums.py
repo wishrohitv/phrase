@@ -20,10 +20,9 @@ class ProviderType(str, PyEnum):
     APPLE = "apple"
 
 
-class EntityType(str, PyEnum):
+class FeatureType(str, PyEnum):
     MOVIE = "movie"
-    TVSHOW = "tvshow"
-    EPISODE = "episode"
+    TVSHOW = "tvshow"  # tvshow for refering groups of episode
 
 
 class Language(str, PyEnum):
@@ -90,6 +89,10 @@ class Language(str, PyEnum):
     KYRGYZ = "ky"
     TURKMEN = "tk"
     UKRAINIAN = "uk"
+    CHINESE_TW = "zh-TW"
+    CHINESE_CN = "zh-CN"
+    PORTUGUESE_PT = "pt-BR"
+    PORTUGUESE_BR = "pt-PT"
     TAMIL = "ta"
     TELUGU = "te"
     MALAYALAM = "ml"
@@ -108,7 +111,14 @@ class Language(str, PyEnum):
     BODO = "brx"
     MANIPURI = "mni"
     SANSCIRT = "sa"
+
     OTHER = "other"
+
+
+class FeatureUnit(str, PyEnum):
+    REQUEST = "request"
+    TOKENS = "tokens"
+    CHARACATER = "characters"
 
 
 class SubscriptionStatus(str, PyEnum):
@@ -122,6 +132,22 @@ class PlansStatus(str, PyEnum):
     DISCOUNTINUED = "discountinued"
 
 
+class PlansBillingType(str, PyEnum):
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+
 class DiscoverType(str, PyEnum):
     POPULAR = "popular"
     LATEST = "latest"
+
+
+class ChatRoleType(str, PyEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ChatMessageStatus(str, PyEnum):
+    PENDING = "pending"
+    FAILED = "failed"
+    SUCCESS = "success"

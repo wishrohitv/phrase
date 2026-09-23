@@ -1,0 +1,21 @@
+users
+  │
+  │
+  ▼
+subscriptions
+  │
+  │ plan_id
+  ▼
+plans
+  │
+  │
+  ▼
+plan_features
+  │              │
+  │ plan_id      │ feature_id
+  ▼              ▼
+plans          features
+                  │
+                  │
+                  ▼
+             feature_usage

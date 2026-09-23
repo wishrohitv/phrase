@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from utils.datetime_utc import datetime, datetime_utc_now
 
 from .base import Base
-from .enums import EntityType
+from .enums import FeatureType
 
 
 class Title(Base):
@@ -18,12 +18,9 @@ class Title(Base):
     __tablename__ = "titles"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    type: Mapped[EntityType] = mapped_column(Enum(EntityType))
-    name: Mapped[str] = mapped_column(String(100))
-    alt_name: Mapped[str] = mapped_column(JSONB(none_as_null=True))
-    parent_imdb: Mapped[str] = mapped_column(String(22), index=True)
-    # TODO: add language enum
-    language: Mapped[str] = mapped_column(String(16))
+    type: Mapped[FeatureType] = mapped_column(Enum(FeatureType))
+    title: Mapped[str] = mapped_column(String(100))
+    imdb: Mapped[str] = mapped_column(String(22), index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime_utc_now, onupdate=datetime_utc_now
