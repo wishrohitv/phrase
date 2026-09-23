@@ -2,25 +2,31 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from redis_fastapi import FastAPIRedis
 
 from database import engine
 from models.base import Base
 from modules.auth.routes import auth
-from modules.entity.routes import entity
+from modules.billing.routes import billing
+from modules.chat.routes import chats
 from modules.subscription.routes import subscription
-from modules.users.routes import users
+from modules.title.routes import title
+from modules.user.routes import user
 from utils import BadRequestException
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app: FastAPI = FastAPI()
 
+FastAPIRedis(app).lifespan().caching()
 
-app.include_router(users, prefix="/api")
+app.include_router(user, prefix="/api")
 app.include_router(auth, prefix="/api")
-app.include_router(entity, prefix="/api")
+app.include_router(title, prefix="/api")
 app.include_router(subscription, prefix="/api")
+app.include_router(chats, prefix="/api")
+app.include_router(billing, prefix="/api")
 
 
 @app.exception_handler(RequestValidationError)
