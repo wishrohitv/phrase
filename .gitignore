@@ -15,6 +15,7 @@ wheels/
 
 **/.env
 **/secrets.txt
+src/temp/
 
 # DB migrations
 alembic/
