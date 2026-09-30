@@ -15,7 +15,7 @@ class Subscription(Base):
         id (int): Auto generated primary key
         user_id (int): Primary key of users
         plan (int): Primary key of plans
-        status (Enum(ACITVE|SUSSPENED|EXPIRED)): Subcription status
+        status (Enum(ACITVE|SUSSPENDED|EXPIRED)): Subcription status
         next_due (datetime): Next payment due date
     Returns:
     Raises:
