@@ -1,7 +1,8 @@
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import Chats
+from models import Messages
 from services.embeddings import get_embedding
 
 
@@ -12,8 +13,8 @@ def store_chat_embeddings(
     db: Session = SessionLocal()
     try:
         embedding = get_embedding(text=message)
-        chat = Chats(chat_id=chat_id, message=message, embedding=embedding)
-        db.add(chat)
+        query = update(Messages).filter_by(id=chat_id).values(embedding=embedding)
+        db.execute(query)
         db.commit()
     finally:
         db.close()
