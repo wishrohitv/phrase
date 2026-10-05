@@ -139,7 +139,9 @@ def refresh_token(
         else:
             raise BadRequestException("Missing authentication credentials")
 
-        decode_token = decode_jwt_token(token, settings.REFRESH_TOKEN_SECRET_KEY.get_secret_value())
+        decode_token = decode_jwt_token(
+            token, settings.REFRESH_TOKEN_SECRET_KEY.get_secret_value()
+        )
         session = (
             db.query(Sessions)
             .filter_by(
@@ -169,7 +171,7 @@ def refresh_token(
         db.commit()
 
         # Delete the existing token
-        db.delete(session)
+        session.refresh_token = None
         db.commit()
 
         res = Success(
