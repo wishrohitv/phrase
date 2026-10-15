@@ -5,13 +5,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from utils.datetime_utc import datetime, datetime_utc_now
 
-from .base import Base
+from ..base import Base
 
 
 class LLMUsage(Base):
     __tablename__ = "llm_usage"
     id: Mapped[int] = mapped_column(primary_key=True)
-    subscription_id: Mapped[int] = mapped_column(ForeignKey("subscription"))
+    subscription_id: Mapped[int] = mapped_column(ForeignKey("subscription.id"))
     message_uid: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     # request_id

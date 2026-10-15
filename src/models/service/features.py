@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from utils.datetime_utc import datetime, datetime_utc_now
@@ -21,5 +21,5 @@ class Feature(Base):
     quantity: Mapped[str] = mapped_column(
         Integer
     )  # e.g. 'request: 1', 'token: 100', 'translation: 500'
-    unit: Mapped[FeatureUnit] = mapped_column(ForeignKey("feature_units.name"))
+    unit: Mapped[FeatureUnit] = mapped_column(Enum(FeatureUnit))
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)

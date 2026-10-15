@@ -1,9 +1,9 @@
 from .base import Base  # noqa: F401
-from .chats import Chats
+from .chats import Chats  # noqa: F401
 from .enums import *
 from .episode import Episode  # noqa: F401
 from .feedback import Feedback  # noqa: F401
-from .messages import Messages
+from .messages import Messages  # noqa: F401
 from .movie import Movie  # noqa: F401
 from .service.plans import Plans  # noqa: F401
 from .service.subscription import Subscription  # noqa: F401
