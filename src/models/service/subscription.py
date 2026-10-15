@@ -21,6 +21,7 @@ class Subscription(Base):
     Raises:
 
     """
+
     __tablename__ = "subscription"
 
     id: Mapped[int] = mapped_column(primary_key=True)
