@@ -19,6 +19,7 @@ class Plans(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     price_amount: Mapped[float] = mapped_column(Numeric(scale=2))
+    name: Mapped[str] = mapped_column(String(50))
     price_currency: Mapped[str] = mapped_column(String(20), default="INR")
     benifit: Mapped[str] = mapped_column(String(300))
     billing_type: Mapped[PlansBillingType] = mapped_column(Enum(PlansBillingType))
