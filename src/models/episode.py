@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import VARCHAR, ForeignKey, Integer, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,7 +18,7 @@ class Episode(Base):
     year: Mapped[int | None] = mapped_column(Integer)
     season_number: Mapped[int] = mapped_column(Integer)
     episode_number: Mapped[int] = mapped_column(Integer)
-    unique_id: Mapped[str] = mapped_column(Uuid)
+    unique_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime_utc_now, onupdate=datetime_utc_now
