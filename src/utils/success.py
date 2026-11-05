@@ -1,10 +1,20 @@
 import json
+from typing import TypeVar
+from warnings import deprecated
 
 from fastapi import Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
+T = TypeVar("T")
 
+
+class SuccessSchema[T](BaseModel):
+    data: T | None = None
+    message: str = "Request successful"
+
+
+@deprecated("New implementation added. Use SuccessSchema")
 class Success(Response):
     def __init__(
         self,
