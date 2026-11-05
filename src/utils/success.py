@@ -2,12 +2,13 @@ import json
 
 from fastapi import Response
 from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
 
 
 class Success(Response):
     def __init__(
         self,
-        data: str | dict | None = None,
+        data: BaseModel | list[BaseModel] | str | dict | list | None = None,
         status_code=200,
         message="Request successfull",
     ):
