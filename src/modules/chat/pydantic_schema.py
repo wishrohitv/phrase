@@ -10,10 +10,6 @@ class ChatMessageSchema(BaseModel):
     content: str
 
 
-class NewChatSchema(BaseModel):
-    title: str
-
-
 class ChatResponseSchema(BaseModel):
     message_uid: uuid.UUID
     content: str | None = None

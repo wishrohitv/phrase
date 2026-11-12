@@ -5,24 +5,23 @@ from collections.abc import AsyncIterable, Iterable
 from logging import getLogger
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi.responses import StreamingResponse
-from fastapi.sse import EventSourceResponse, ServerSentEvent
+from fastapi.responses import RedirectResponse
+from fastapi.sse import EventSourceResponse
 from redis_fastapi import CacheBackendDep
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import and_
 
 from database import get_db
-from middlewares import auth_middleware, subscription_middleware
+from middlewares import auth_middleware, chat_usage_middleware, subscription_middleware
 from models import ChatRoleType, Chats, Messages, Users
 from models.service import Subscription
 from services.chat_service import chat_agent
-from services.usage_limit.chat_limit import chat_usage_limit
 from tasks.chat_embbeding import store_chat_embeddings
 from tasks.usage_track import track_feature_usage, track_llm_usage
 from utils.errors import BadRequestException
 from utils.success import Success
 
-from .pydantic_schema import ChatMessageSchema, ChatResponseSchema, NewChatSchema
+from .pydantic_schema import ChatMessageSchema, ChatResponseSchema
 
 chats = APIRouter(prefix="/chat")
 
@@ -58,21 +57,25 @@ async def get_user_chats(
 
 @chats.post("")
 async def create_chat_session(
-    new_chat_data: NewChatSchema,
+    message_data: ChatMessageSchema,
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
     """
     Create new chat session, generate chat uid
     """
+    title = message_data.content.strip()
+    if title == "":
+        raise BadRequestException("Message cannot be empty")
+    title = title if len(title) < 70 else title[:70]
     new_chat = Chats(
-        title=new_chat_data.title,
+        title=title,
         owner_id=user.id,
     )
     db.add(new_chat)
     db.commit()
     db.refresh(new_chat)
-    return Success({"uid": str(new_chat.uid)}, status_code=201)
+    return RedirectResponse(f"/api/chat/{new_chat.uid}/message")
 
 
 @chats.delete("/{uid}")
@@ -131,12 +134,12 @@ async def chat(
     message_data: ChatMessageSchema,  # Expect body contain entire history of chat along with latest prompt
     redis: CacheBackendDep,
     background_tasks: BackgroundTasks,
-    subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
-    user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
+    user: Users = Depends(auth_middleware),  # noqa: B008
+    subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
+    featrue_usage=Depends(chat_usage_middleware),  # noqa: B008
 ) -> AsyncIterable[ChatResponseSchema]:
 
-    chat_usage_limit(user.id, subscription, db)
     redis_message_key = (
         f"mes_history:chat_uid:{uid}:message_uid:{message_data.message_uid}"
     )
@@ -168,7 +171,6 @@ async def chat(
             redis_message_key, db_message.content, ttl=redis_message_key_exp
         )
 
-        # async def cached_stream():
         yield ChatResponseSchema(
             message_uid=message_data.message_uid,
             content=db_message.content,
@@ -193,18 +195,21 @@ async def chat(
     )
 
     # Build conversation chat history from db or cache
-    redis_chat_history_key: str = f"chat_history:uid:{uid}"
+    redis_chat_history_key: str = f"chat_history:chat_uid:{uid}"
     redis_chat_history_key_exp: int = 60 * 60 * 12  # 12 hour
     message_window_length: int = 40
     stored_chat_history: list[dict] = (
         await redis.get(redis_chat_history_key, default=[]) or []
     )
 
+    # If cached history is empty
+    # fetch from db and store in cache
     if not stored_chat_history:
         chat_history = (
             db.query(Messages.content, Messages.role)
             .filter_by(chat_uid=uid)
             .order_by(Messages.created_at.desc())
+            .limit(message_window_length)
             .all()
         )
 
@@ -213,26 +218,29 @@ async def chat(
             for message in chat_history:
                 _chat_history.append({"role": message.role, "content": message.content})
             _chat_history.reverse()
+            # Set chat history in cachedb
             await redis.set(
                 redis_chat_history_key, _chat_history, ttl=redis_chat_history_key_exp
             )
             stored_chat_history.extend(_chat_history)
 
+    # Append latest message to history
     stored_chat_history.append(
         {"role": ChatRoleType.USER.value, "content": message_data.content}
     )
-
+    # Limit message history to 40 message
     if len(stored_chat_history) > message_window_length:
         stored_chat_history = stored_chat_history[-message_window_length:]
 
+    # Initialize time to calcluate llm response duration
     initial_time = time.time()
     # Call agent and send message history with latest message
     event = chat_agent(json.dumps(stored_chat_history))
 
     full_response = ""
-    time_taken: float
+    time_taken: float | None = None
     last_stream = None
-    assistent_uid = str(uuid.uuid4())
+    assistent_uid: uuid.UUID = str(uuid.uuid4())
     try:
         async for chunk in event:
             if hasattr(chunk, "usage") and chunk.usage:
@@ -258,7 +266,8 @@ async def chat(
         db.add(agent_res)
         db.commit()
 
-        # Cache message and append in history
+        # TODO: look into this way
+        # Cache agent message and append in history
         await redis.set(redis_message_key, full_response, ttl=redis_message_key_exp)
         stored_chat_history.append(
             {"role": ChatRoleType.ASSISTANT, "content": full_response}
