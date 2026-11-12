@@ -1,24 +1,30 @@
 import json
+import time
 import uuid
+from collections.abc import AsyncIterable, Iterable
 from logging import getLogger
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from redis_fastapi import CacheBackendDep
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import and_
 
 from database import get_db
-from middlewares.auth_middleware import auth_middleware
+from middlewares import auth_middleware, subscription_middleware
 from models import ChatRoleType, Chats, Messages, Users
+from models.service import Subscription
 from services.chat_service import chat_agent
-from tasks.chats import store_chat_embeddings
+from services.usage_limit.chat_limit import chat_usage_limit
+from tasks.chat_embbeding import store_chat_embeddings
+from tasks.usage_track import track_feature_usage, track_llm_usage
 from utils.errors import BadRequestException
 from utils.success import Success
 
-from .pydantic_schema import ChatMessageSchema, NewChatSchema
+from .pydantic_schema import ChatMessageSchema, ChatResponseSchema, NewChatSchema
 
-chats = APIRouter(prefix="/chats")
+chats = APIRouter(prefix="/chat")
 
 logger = getLogger(__name__)
 
@@ -92,7 +98,7 @@ async def delete_chat_session(
     return Success("Chat deleted successfully")
 
 
-@chats.get("/{uid/messages}")
+@chats.get("/{uid}/message")
 async def get_chat_message(
     uid: uuid.UUID,
     last_id=0,
@@ -115,16 +121,22 @@ async def get_chat_message(
     return chats
 
 
-@chats.post("/{uid}/messages")
+@chats.post(
+    "/{uid}/message",
+    response_class=EventSourceResponse,
+    response_model=None,
+)
 async def chat(
     uid: uuid.UUID,
     message_data: ChatMessageSchema,  # Expect body contain entire history of chat along with latest prompt
     redis: CacheBackendDep,
     background_tasks: BackgroundTasks,
+    subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
-):
+) -> AsyncIterable[ChatResponseSchema]:
 
+    chat_usage_limit(user.id, subscription, db)
     redis_message_key = (
         f"mes_history:chat_uid:{uid}:message_uid:{message_data.message_uid}"
     )
@@ -134,12 +146,12 @@ async def chat(
     stored_message = await redis.get(redis_message_key)
 
     if stored_message:
-
-        async def cached_stream():
-            yield f"data: {json.dumps({'chunk': stored_message, 'status': 'cached'})}\n\n"
-
-        return StreamingResponse(cached_stream(), media_type="text/event-stream")
-
+        yield ChatResponseSchema(
+            message_uid=message_data.message_uid,
+            content=stored_message,
+            status="cached",
+        )
+        return
     # Check if db for existing message
     db_message = (
         db.query(Messages)
@@ -152,12 +164,17 @@ async def chat(
 
     if db_message:
         # set message in cache
-        await redis.set({"role": db_message.role, "content": db_message.content})
+        await redis.set(
+            redis_message_key, db_message.content, ttl=redis_message_key_exp
+        )
 
-        async def cached_stream():
-            yield f"chunks: {json.dumps({'data': stored_message}), 'status': 'cached', }\n\n"
-
-        return StreamingResponse(cached_stream(), media_type="text/event-stream")
+        # async def cached_stream():
+        yield ChatResponseSchema(
+            message_uid=message_data.message_uid,
+            content=db_message.content,
+            status="cached",
+        )
+        return
 
     # Store user message in db
     new_message = Messages(
@@ -183,7 +200,7 @@ async def chat(
         await redis.get(redis_chat_history_key, default=[]) or []
     )
 
-    if stored_chat_history:
+    if not stored_chat_history:
         chat_history = (
             db.query(Messages.content, Messages.role)
             .filter_by(chat_uid=uid)
@@ -208,51 +225,79 @@ async def chat(
     if len(stored_chat_history) > message_window_length:
         stored_chat_history = stored_chat_history[-message_window_length:]
 
+    initial_time = time.time()
     # Call agent and send message history with latest message
     event = chat_agent(json.dumps(stored_chat_history))
 
-    # return res
-    async def agent_event():
-        full_response = ""
-        assistent_uid = str(uuid.uuid4())
-        try:
-            async for chunk in event:
-                data_chunk = {
-                    "chunk": chunk.choices[0].delta.content,
-                    "status": "loading",
-                }
-                full_response += chunk.choices[0].delta.content
-                yield f"data: {json.dumps(data_chunk)}\n\n"
-
-            # store agent response to DB
-            agent_res = Messages(
-                chat_uid=uid,
-                content=full_response,
-                role="assistant",
-                message_uid=assistent_uid,
-            )
-            db.add(agent_res)
-            db.commit()
-
-            # Cache message and append in history
-            await redis.set(redis_message_key, full_response, ttl=redis_message_key_exp)
-            stored_chat_history.append(
-                {"role": ChatRoleType.ASSISTANT, "content": full_response}
-            )
-            await redis.set(
-                redis_chat_history_key,
-                stored_chat_history,
-                ttl=redis_chat_history_key_exp,
+    full_response = ""
+    time_taken: float
+    last_stream = None
+    assistent_uid = str(uuid.uuid4())
+    try:
+        async for chunk in event:
+            if hasattr(chunk, "usage") and chunk.usage:
+                end_time = time.time()
+                last_stream = chunk
+                time_taken = end_time - initial_time
+            content = chunk.choices[0].delta.content
+            if content:
+                full_response += content
+            yield ChatResponseSchema(
+                message_uid=message_data.message_uid,
+                content=content,
+                status="loading",
             )
 
-            # Signal end of stream
-            yield f"data: {json.dumps({'status': 'success', 'message_uid': assistent_uid})} \n\n"
-        except Exception as e:
-            logger.exception("Error while message generation")
-            data_chunk = {
-                "chunk": "Sorry, I encountered an error processing your request.",
-                "status": "error",
-            }
-            yield f"data: {json.dumps({'chunk': data_chunk, 'status': 'failed', 'error': str(e)})}\n\n"
+        # store agent response to DB
+        agent_res = Messages(
+            chat_uid=uid,
+            content=full_response,
+            role="assistant",
+            message_uid=assistent_uid,
+        )
+        db.add(agent_res)
+        db.commit()
 
-    return StreamingResponse(agent_event(), media_type="text/event-stream")
+        # Cache message and append in history
+        await redis.set(redis_message_key, full_response, ttl=redis_message_key_exp)
+        stored_chat_history.append(
+            {"role": ChatRoleType.ASSISTANT, "content": full_response}
+        )
+        await redis.set(
+            redis_chat_history_key,
+            stored_chat_history,
+            ttl=redis_chat_history_key_exp,
+        )
+        print(last_stream.dict())
+        # Store feature_usage
+        background_tasks.add_task(track_feature_usage, user_id=user.id, feature_id=2)
+
+        # Store llm usage
+        background_tasks.add_task(
+            track_llm_usage,
+            subscription_id=subscription.id,
+            message_uid=assistent_uid,
+            user_id=user.id,
+            feature_id=2,
+            provider="openrouter",
+            model=last_stream.model,
+            prompt_tokens=last_stream.usage.prompt_tokens,
+            completion_tokens=last_stream.usage.completion_tokens,
+            completion_tokens_details=last_stream.usage.completion_tokens_details.dict(),
+            total_tokens=last_stream.usage.total_tokens,
+            cost=last_stream.usage.cost,
+            cost_details=last_stream.usage.cost_details.dict(),
+            prompt_tokens_details=last_stream.usage.prompt_tokens_details.dict(),
+            request_id=last_stream.id,
+            time_taken=round(time_taken, 2),
+        )
+        yield ChatResponseSchema(message_uid=message_data.message_uid, status="success")
+
+    except Exception:
+        logger.exception("Error while message generation")
+
+        yield ChatMessageSchema(
+            message_uid=message_data.message_uid,
+            content="Sorry, I encountered an error processing your request.",
+            status="error",
+        )
