@@ -4,12 +4,12 @@ import uuid
 from collections.abc import AsyncIterable, Iterable
 from logging import getLogger
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import RedirectResponse
 from fastapi.sse import EventSourceResponse
 from redis_fastapi import CacheBackendDep
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import and_
+from sqlalchemy.sql import and_, or_
 
 from database import get_db
 from middlewares import auth_middleware, chat_usage_middleware, subscription_middleware
@@ -18,51 +18,92 @@ from models.service import Subscription
 from services.chat_service import chat_agent
 from tasks.chat_embbeding import store_chat_embeddings
 from tasks.usage_track import track_feature_usage, track_llm_usage
+from utils.datetime_utc import datetime_from_unix, datetime_to_unix
 from utils.errors import BadRequestException
-from utils.success import Success
+from utils.success import PaginatedSchema, SuccessSchema
 
-from .pydantic_schema import ChatMessageSchema, ChatResponseSchema
+from .pydantic_schema import (
+    ChatMessageResponseSchema,
+    ChatStreamingResponseSchema,
+    UserChatsResponseSchema,
+)
 
 chats = APIRouter(prefix="/chat")
 
 logger = getLogger(__name__)
 
 
-@chats.get("")
-async def get_user_chats(
+@chats.get(
+    "",
+    response_model=SuccessSchema[PaginatedSchema[list[UserChatsResponseSchema]]],
+    status_code=200,
+)
+async def user_chats(
+    after_uid: uuid.UUID | None = Query(None, description="Last chat UID"),
+    after_date: float | None = Query(None, description="Last created_at"),
+    limit: int = Query(20, ge=1, le=50),
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
     """
-    List all chats and return title , id ,last created
-    """
-    chats = (
-        db.query(Chats.uid, Chats.title, Chats.updated_at)
-        .filter_by(owner_id=user.id)
-        .order_by(
-            Chats.updated_at.desc(),
-        )
-        .limit(10)
-    ).all()
+    List all chats
 
-    return [
-        {
-            "uid": str(chat.uid),
-            "title": chat.title,
-            "updated_at": chat.updated_at,
-        }
-        for chat in chats
-    ]
+    Args:
+        - after_uid (uuid | None): Last chat uid to start from
+        - after_date (flaot | None): Last chat created_at to start from
+        - limit (int, def=20 1><50): Number of chats to fetch
+    Returns:
+        - SuccessSchema[PaginatedSchema[list[UserChatsResponseSchema]]]: List of chats
+    """
+
+    query = (
+        db.query(Chats)
+        .filter_by(owner_id=user.id)
+        .order_by(Chats.updated_at.desc(), Chats.uid.desc())
+    )
+    # Apply keyset filter
+    if after_uid is not None and after_date is not None:
+        query = query.filter(
+            or_(
+                Chats.updated_at < datetime_from_unix(after_date),
+                and_(
+                    Chats.updated_at == datetime_from_unix(after_date),
+                    Chats.uid < after_uid,
+                ),
+            )
+        )
+    items = query.limit(limit + 1).all()
+
+    has_more = len(items) > limit
+
+    if has_more:
+        items = items[:limit]
+
+    chats = [UserChatsResponseSchema.model_validate(chat) for chat in items]
+
+    response = PaginatedSchema(items=chats, has_more=has_more)
+
+    if items:
+        last_item = items[-1]
+        response.after_uid = last_item.uid
+        response.after_date = datetime_to_unix(last_item.updated_at)
+
+    return SuccessSchema(data=response)
 
 
 @chats.post("")
 async def create_chat_session(
-    message_data: ChatMessageSchema,
+    message_data: UserChatsResponseSchema,
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
     """
     Create new chat session, generate chat uid
+
+    Args:
+        - message_data (UserChatsResponseSchema):
+    Returns:
+        - Redirect to /api/chat/{uid}/message:
     """
     title = message_data.content.strip()
     if title == "":
@@ -84,6 +125,16 @@ async def delete_chat_session(
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
+    """
+    Delete user's chats along with messages
+
+    Args:
+        - uid (uuid): Chat uid
+    Returns:
+        - SuccessSchema: Deletion status
+    Raises:
+        - BadRequestException: If chat not found
+    """
     chat = (
         db.query(Chats)
         .where(
@@ -98,30 +149,54 @@ async def delete_chat_session(
         raise BadRequestException("Chat not found")
     db.delete(chat)
     db.commit()
-    return Success("Chat deleted successfully")
+    return SuccessSchema("Chat deleted successfully")
 
 
 @chats.get("/{uid}/message")
 async def get_chat_message(
     uid: uuid.UUID,
-    last_id=0,
+    after_id: int | None = Query(None, description="Last chat ID"),
+    after_date: float | None = Query(None, description="Last created_at"),
+    limit: int = Query(10, ge=1, le=50),
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
     """
     Get all chats message from the end using
     """
-    chats = (
+    query = (
         db.query(Messages)
         .filter_by(chat_uid=uid)
-        .order_by(
-            Messages.created_at.desc(),
+        .order_by(Messages.created_at.desc(), Messages.id.desc())
+    )
+
+    # Aply the keyset filter
+    if after_id is not None and after_date is not None:
+        query = query.filter(
+            or_(
+                Messages.created_at < datetime_from_unix(after_date),
+                and_(
+                    Messages.created_at == datetime_from_unix(after_date),
+                    Messages.id < after_id,
+                ),
+            )
         )
-        .limit(10)
-    ).all()
-    if not chats:
-        raise BadRequestException("Chat not found")
-    return chats
+
+    items = query.limit(limit + 1).all()
+
+    has_more = len(items) > limit
+
+    if has_more:
+        items = items[:limit]
+
+    chats = [ChatMessageResponseSchema.model_validate(chat) for chat in items]
+    response = PaginatedSchema(items=chats, has_more=has_more)
+
+    if items:
+        last_item = items[-1]
+        response.after_uid = last_item.id
+        response.after_date = datetime_to_unix(last_item.created_at)
+    return response
 
 
 @chats.post(
@@ -131,14 +206,14 @@ async def get_chat_message(
 )
 async def chat(
     uid: uuid.UUID,
-    message_data: ChatMessageSchema,  # Expect body contain entire history of chat along with latest prompt
+    message_data: UserChatsResponseSchema,  # Expect body contain entire history of chat along with latest prompt
     redis: CacheBackendDep,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),  # noqa: B008
     user: Users = Depends(auth_middleware),  # noqa: B008
     subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
     featrue_usage=Depends(chat_usage_middleware),  # noqa: B008
-) -> AsyncIterable[ChatResponseSchema]:
+) -> AsyncIterable[ChatStreamingResponseSchema]:
 
     redis_message_key = (
         f"mes_history:chat_uid:{uid}:message_uid:{message_data.message_uid}"
@@ -149,7 +224,7 @@ async def chat(
     stored_message = await redis.get(redis_message_key)
 
     if stored_message:
-        yield ChatResponseSchema(
+        yield ChatStreamingResponseSchema(
             message_uid=message_data.message_uid,
             content=stored_message,
             status="cached",
@@ -171,7 +246,7 @@ async def chat(
             redis_message_key, db_message.content, ttl=redis_message_key_exp
         )
 
-        yield ChatResponseSchema(
+        yield ChatStreamingResponseSchema(
             message_uid=message_data.message_uid,
             content=db_message.content,
             status="cached",
@@ -250,7 +325,7 @@ async def chat(
             content = chunk.choices[0].delta.content
             if content:
                 full_response += content
-            yield ChatResponseSchema(
+            yield ChatStreamingResponseSchema(
                 message_uid=message_data.message_uid,
                 content=content,
                 status="loading",
@@ -300,12 +375,14 @@ async def chat(
             request_id=last_stream.id,
             time_taken=round(time_taken, 2),
         )
-        yield ChatResponseSchema(message_uid=message_data.message_uid, status="success")
+        yield ChatStreamingResponseSchema(
+            message_uid=message_data.message_uid, status="success"
+        )
 
     except Exception:
         logger.exception("Error while message generation")
 
-        yield ChatMessageSchema(
+        yield UserChatsResponseSchema(
             message_uid=message_data.message_uid,
             content="Sorry, I encountered an error processing your request.",
             status="error",
