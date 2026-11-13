@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import TypeVar
 from warnings import deprecated
 
@@ -6,12 +7,19 @@ from fastapi import Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-T = TypeVar("T")
+# T = TypeVar("T")
 
 
 class SuccessSchema[T](BaseModel):
     data: T | None = None
     message: str = "Request successful"
+
+
+class PaginatedSchema[T](BaseModel):
+    items: list[T] = []
+    after_uid: uuid.UUID = None
+    after_date: float | None = None
+    has_more: bool | None = None
 
 
 @deprecated("New implementation added. Use SuccessSchema")
