@@ -7,7 +7,7 @@ from logging import getLogger
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import RedirectResponse
 from fastapi.sse import EventSourceResponse
-from redis_fastapi import CacheBackendDep
+from redis_fastapi import CacheBackendDep, cache
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import and_, or_
 
@@ -24,6 +24,7 @@ from utils.success import PaginatedSchema, SuccessSchema
 
 from .pydantic_schema import (
     ChatMessageResponseSchema,
+    ChatMessageSchema,
     ChatStreamingResponseSchema,
     UserChatsResponseSchema,
 )
@@ -35,7 +36,8 @@ logger = getLogger(__name__)
 
 @chats.get(
     "",
-    response_model=SuccessSchema[PaginatedSchema[list[UserChatsResponseSchema]]],
+    dependencies=[Depends(cache(ttl=60 * 60 * 24 * 3, eviction_group="user_chats"))],
+    response_model=SuccessSchema[PaginatedSchema[UserChatsResponseSchema]],
     status_code=200,
 )
 async def user_chats(
@@ -152,17 +154,30 @@ async def delete_chat_session(
     return SuccessSchema("Chat deleted successfully")
 
 
-@chats.get("/{uid}/message")
+@chats.get(
+    "/{uid}/message",
+    dependencies=[Depends(cache(ttl=60 * 60 * 24 * 3, eviction_group="chat_message"))],
+    response_model=SuccessSchema[PaginatedSchema[ChatMessageResponseSchema]],
+    status_code=200,
+)
 async def get_chat_message(
     uid: uuid.UUID,
-    after_id: int | None = Query(None, description="Last chat ID"),
+    after_uid: int | None = Query(None, description="Last chat ID"),
     after_date: float | None = Query(None, description="Last created_at"),
     limit: int = Query(10, ge=1, le=50),
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
     """
-    Get all chats message from the end using
+    Get all chat messages in descending order
+
+    Args:
+        - uid (uuid): Take chat uid from path params
+        - after_uid (int): Message id from query params
+        - after_date (int): Unix Timestamp from query params
+        - limit (int): Limit range between (1 to 50) from query params
+    Returns:
+        - SuccessSchema[PaginatedSchema[list[ChatMessageResponseSchema]]: Paginated model
     """
     query = (
         db.query(Messages)
@@ -171,13 +186,13 @@ async def get_chat_message(
     )
 
     # Aply the keyset filter
-    if after_id is not None and after_date is not None:
+    if after_uid is not None and after_date is not None:
         query = query.filter(
             or_(
                 Messages.created_at < datetime_from_unix(after_date),
                 and_(
                     Messages.created_at == datetime_from_unix(after_date),
-                    Messages.id < after_id,
+                    Messages.id < after_uid,
                 ),
             )
         )
@@ -196,7 +211,8 @@ async def get_chat_message(
         last_item = items[-1]
         response.after_uid = last_item.id
         response.after_date = datetime_to_unix(last_item.created_at)
-    return response
+
+    return SuccessSchema(data=response)
 
 
 @chats.post(
@@ -206,7 +222,7 @@ async def get_chat_message(
 )
 async def chat(
     uid: uuid.UUID,
-    message_data: UserChatsResponseSchema,  # Expect body contain entire history of chat along with latest prompt
+    message_data: ChatMessageSchema,  # Expect body contain entire history of chat along with latest prompt
     redis: CacheBackendDep,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),  # noqa: B008
@@ -214,14 +230,23 @@ async def chat(
     subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
     featrue_usage=Depends(chat_usage_middleware),  # noqa: B008
 ) -> AsyncIterable[ChatStreamingResponseSchema]:
-
-    redis_message_key = (
+    """
+    Agent Chat streaming enpoints
+    Args:
+        - uid (uuid): Chat uid from path params
+        - message_data (UserChatsResponseSchema): Body object from body
+    Returns:
+        - AsyncIterable[ChatStreamingResponseSchema]: Streamable object
+    """
+    FEATURE_ID = 2  # FOR CHAT USAGE
+    # Redis key for
+    REDIS_MESSAGE_KEY = (
         f"mes_history:chat_uid:{uid}:message_uid:{message_data.message_uid}"
     )
-    redis_message_key_exp = 60 * 60 * 12  # 12 hour
+    REDIS_MESSAGE_KEY_EXP = 60 * 60 * 12  # 12 hour
 
     # Redis indempotency check : return message if already exists
-    stored_message = await redis.get(redis_message_key)
+    stored_message = await redis.get(REDIS_MESSAGE_KEY)
 
     if stored_message:
         yield ChatStreamingResponseSchema(
@@ -230,12 +255,13 @@ async def chat(
             status="cached",
         )
         return
-    # Check if db for existing message
+    # Check if db for existing assistans's response for given message_uid
     db_message = (
         db.query(Messages)
         .filter_by(
             chat_uid=uid,
             message_uid=message_data.message_uid,
+            role=ChatRoleType.ASSISTANT,
         )
         .first()
     )
@@ -243,7 +269,7 @@ async def chat(
     if db_message:
         # set message in cache
         await redis.set(
-            redis_message_key, db_message.content, ttl=redis_message_key_exp
+            REDIS_MESSAGE_KEY, db_message.content, ttl=REDIS_MESSAGE_KEY_EXP
         )
 
         yield ChatStreamingResponseSchema(
@@ -258,7 +284,7 @@ async def chat(
         chat_uid=uid,
         content=message_data.content,
         user_id=user.id,
-        message_uid=message_data,
+        message_uid=message_data.message_uid,
     )
     db.add(new_message)
     db.commit()
@@ -270,11 +296,11 @@ async def chat(
     )
 
     # Build conversation chat history from db or cache
-    redis_chat_history_key: str = f"chat_history:chat_uid:{uid}"
-    redis_chat_history_key_exp: int = 60 * 60 * 12  # 12 hour
-    message_window_length: int = 40
+    REDIS_CHAT_HISTORY_KEY: str = f"chat_history:chat_uid:{uid}"
+    REDIS_CHAT_HISTORY_KEY_EXP: int = 60 * 60 * 12  # 12 hour
+    MESSAGE_WINDOW_LENGTH: int = 40
     stored_chat_history: list[dict] = (
-        await redis.get(redis_chat_history_key, default=[]) or []
+        await redis.get(REDIS_CHAT_HISTORY_KEY, default=[]) or []
     )
 
     # If cached history is empty
@@ -284,7 +310,7 @@ async def chat(
             db.query(Messages.content, Messages.role)
             .filter_by(chat_uid=uid)
             .order_by(Messages.created_at.desc())
-            .limit(message_window_length)
+            .limit(MESSAGE_WINDOW_LENGTH)
             .all()
         )
 
@@ -295,17 +321,17 @@ async def chat(
             _chat_history.reverse()
             # Set chat history in cachedb
             await redis.set(
-                redis_chat_history_key, _chat_history, ttl=redis_chat_history_key_exp
+                REDIS_CHAT_HISTORY_KEY, _chat_history, ttl=REDIS_CHAT_HISTORY_KEY_EXP
             )
             stored_chat_history.extend(_chat_history)
-
-    # Append latest message to history
-    stored_chat_history.append(
-        {"role": ChatRoleType.USER.value, "content": message_data.content}
-    )
+    else:
+        # Append user's latest message to history
+        stored_chat_history.append(
+            {"role": ChatRoleType.USER.value, "content": message_data.content}
+        )
     # Limit message history to 40 message
-    if len(stored_chat_history) > message_window_length:
-        stored_chat_history = stored_chat_history[-message_window_length:]
+    if len(stored_chat_history) > MESSAGE_WINDOW_LENGTH:
+        stored_chat_history = stored_chat_history[-MESSAGE_WINDOW_LENGTH:]
 
     # Initialize time to calcluate llm response duration
     initial_time = time.time()
@@ -315,7 +341,6 @@ async def chat(
     full_response = ""
     time_taken: float | None = None
     last_stream = None
-    assistent_uid: uuid.UUID = str(uuid.uuid4())
     try:
         async for chunk in event:
             if hasattr(chunk, "usage") and chunk.usage:
@@ -336,33 +361,35 @@ async def chat(
             chat_uid=uid,
             content=full_response,
             role="assistant",
-            message_uid=assistent_uid,
+            message_uid=message_data.message_uid,
         )
         db.add(agent_res)
         db.commit()
 
-        # TODO: look into this way
-        # Cache agent message and append in history
-        await redis.set(redis_message_key, full_response, ttl=redis_message_key_exp)
+        # Cache agent message with message_uid
+        await redis.set(REDIS_MESSAGE_KEY, full_response, ttl=REDIS_MESSAGE_KEY_EXP)
+        # Append agent message in history and cache message_history
         stored_chat_history.append(
             {"role": ChatRoleType.ASSISTANT, "content": full_response}
         )
         await redis.set(
-            redis_chat_history_key,
+            REDIS_CHAT_HISTORY_KEY,
             stored_chat_history,
-            ttl=redis_chat_history_key_exp,
+            ttl=REDIS_CHAT_HISTORY_KEY_EXP,
         )
-        print(last_stream.dict())
+        logger.info(last_stream.dict())
         # Store feature_usage
-        background_tasks.add_task(track_feature_usage, user_id=user.id, feature_id=2)
+        background_tasks.add_task(
+            track_feature_usage, user_id=user.id, feature_id=FEATURE_ID
+        )
 
         # Store llm usage
         background_tasks.add_task(
             track_llm_usage,
             subscription_id=subscription.id,
-            message_uid=assistent_uid,
+            message_uid=message_data.message_uid,
             user_id=user.id,
-            feature_id=2,
+            feature_id=FEATURE_ID,
             provider="openrouter",
             model=last_stream.model,
             prompt_tokens=last_stream.usage.prompt_tokens,
@@ -375,14 +402,18 @@ async def chat(
             request_id=last_stream.id,
             time_taken=round(time_taken, 2),
         )
+        logger.info("LLM streaming completed")
+        logger.info("Assistant response saved")
+        logger.info("Redis cache updated")
+        logger.info("Background tasks registered")
         yield ChatStreamingResponseSchema(
-            message_uid=message_data.message_uid, status="success"
+            message_uid=message_data.message_uid, content="", status="success"
         )
 
     except Exception:
         logger.exception("Error while message generation")
 
-        yield UserChatsResponseSchema(
+        yield ChatStreamingResponseSchema(
             message_uid=message_data.message_uid,
             content="Sorry, I encountered an error processing your request.",
             status="error",
