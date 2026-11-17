@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from models import Language
+
 
 class UserLoginSchema(BaseModel):
     email: str = Field(min_length=3, max_length=30)
@@ -10,3 +12,4 @@ class UserRegisterSchema(BaseModel):
     email: str = Field(min_length=3, max_length=30)
     password: str = Field(min_length=8, max_length=20)
     name: str | None = Field(default=None, max_length=20)
+    native_language: Language = Field(default=Language.ENGLISH)

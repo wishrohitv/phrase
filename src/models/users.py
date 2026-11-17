@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from utils.datetime_utc import datetime, datetime_utc_now
 
 from .base import Base
-from .enums import AccountStatus, ProviderType, UserRole
+from .enums import AccountStatus, Language, ProviderType, UserRole
 
 
 class Users(Base):
@@ -33,6 +33,7 @@ class Users(Base):
     suspension_end_date: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True)
     )
+    native_language: Mapped[Language] = mapped_column(Enum(Language))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime_utc_now
     )

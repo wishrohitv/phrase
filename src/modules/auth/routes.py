@@ -46,6 +46,7 @@ async def register_user(
                 user_data.password.encode("utf-8"),
                 bcrypt.gensalt(rounds=settings.SALT_ROUNDS),
             ),
+            native_language=user_data.native_language,
         )
         db.add(new_user)
         db.commit()
