@@ -11,7 +11,8 @@ from .base import Base
 class Chats(Base):
     __tablename__ = "chats"
 
-    uid: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # Generate uuid7 for pagination
+    uid: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
     title: Mapped[str | None] = mapped_column(String(70))  # title for very first time
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
 
