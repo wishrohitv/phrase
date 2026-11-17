@@ -1,7 +1,7 @@
 from logging import getLogger
 
 import jwt
-from fastapi import Cookie, Depends, Header
+from fastapi import Cookie, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -54,6 +54,8 @@ def auth_middleware(
     except jwt.InvalidTokenError:
         logger.info("Invalid access token")
         raise UnauthorizedException("Invalid access token")
+    except HTTPException:
+        raise
 
     except Exception:
         logger.exception("Error while validating access token")
