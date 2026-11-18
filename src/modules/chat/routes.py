@@ -29,7 +29,7 @@ from .pydantic_schema import (
     UserChatsResponseSchema,
 )
 
-chats = APIRouter(prefix="/chat")
+chats = APIRouter(prefix="/chat", tags=["Chats"])
 
 logger = getLogger(__name__)
 
@@ -95,7 +95,7 @@ async def user_chats(
 
 @chats.post("")
 async def create_chat_session(
-    message_data: UserChatsResponseSchema,
+    message_data: ChatMessageSchema,
     user: Users = Depends(auth_middleware),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
@@ -103,7 +103,7 @@ async def create_chat_session(
     Create new chat session, generate chat uid
 
     Args:
-        - message_data (UserChatsResponseSchema):
+        - message_data (ChatMessageSchema):
     Returns:
         - Redirect to /api/chat/{uid}/message:
     """

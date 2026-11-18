@@ -2,17 +2,15 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class UserChatsResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     uid: uuid.UUID
     title: str
     updated_at: datetime
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ChatMessageSchema(BaseModel):
@@ -22,6 +20,7 @@ class ChatMessageSchema(BaseModel):
 
 
 class ChatMessageResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     message_uid: uuid.UUID
     chat_uid: uuid.UUID
@@ -38,11 +37,9 @@ class ChatMessageResponseSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ChatStreamingResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     message_uid: uuid.UUID
     content: str | None = None
     status: Literal[
