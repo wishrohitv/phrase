@@ -5,7 +5,7 @@ from warnings import deprecated
 
 from fastapi import Response
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt
 
 # T = TypeVar("T")
 
@@ -16,10 +16,12 @@ class SuccessSchema[T](BaseModel):
 
 
 class PaginatedSchema[T](BaseModel):
-    items: list[T] = []
-    after_uid: uuid.UUID = None
+    items: list[T]
+    # Pydantic can sometimes coerce values unexpectedly when using unions.
+    # Preserve the exact type, use StrictInt for int:
+    after_uid: StrictInt | uuid.UUID = None
     after_date: float | None = None
-    has_more: bool | None = None
+    has_more: bool = False
 
 
 @deprecated("New implementation added. Use SuccessSchema")

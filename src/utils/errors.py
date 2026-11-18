@@ -29,3 +29,13 @@ class ConflictException(HTTPException):
 class InternalServerErrorException(HTTPException):
     def __init__(self, error: str = "Internal Server Error"):
         super().__init__(status_code=500, detail={"error": error})
+
+
+class UpstreamServiceDownException(HTTPException):
+    def __init__(self, error: str = "Upstream Service Down"):
+        super().__init__(status_code=503, detail={"error": error})
+
+
+# Custom class for opensubtile error
+class OpensubtitleUnauthorized(Exception):
+    pass
