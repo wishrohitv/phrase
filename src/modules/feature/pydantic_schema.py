@@ -1,3 +1,5 @@
+from typing import Self
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from models import FeatureUnit, PlansBillingType, PlansStatus
@@ -20,8 +22,8 @@ class FeatureResponseSchema(FeatureSchema):
 class PlansSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     name: str = Field(min_length=3, max_length=50)
-    price_amount: float = Field()
-    benifit: str = Field(min_length=3, max_length=300)
+    price_amount: float
+    benefit: str = Field(min_length=3, max_length=300)
     status: PlansStatus
     plan_billing_type: PlansBillingType
 
@@ -36,17 +38,16 @@ class PlansResponseSchema(PlansSchema):
 
 class EditPlansSchema(BaseModel):
     id: int
-    price: float | None = Field(default=None)
-    benifit: str | None = Field(default=None)
+    price_amount: float | None = Field(default=None)
+    benefit: str | None = Field(default=None)
     status: PlansStatus | None = Field(default=None)
 
-    # Validator to check none value if all value is none
     @model_validator(mode="after")
-    def check_price_or_benifit_of_status(self) -> EditPlansSchema:
-        # OR condition logic
-        if not self.price and not self.benifit and not self.status:
+    def check_at_least_one_field(self) -> Self:
+        # Fixed: using 'is None' so a price of 0.0 is accepted validly
+        if self.price_amount is None and self.benefit is None and self.status is None:
             raise ValueError(
-                "You must provide either a 'price' or 'benifit' or 'status'."
+                "You must provide at least 'price_amount', 'benefit', or 'status' to update."
             )
         return self
 
@@ -63,6 +64,10 @@ class PlanFeatureResponseSchema(PlanFeatureSchema):
     created_at: datetime
 
 
+class PlanFeatureForPlanFeatureResponseSchema(FeatureResponseSchema):
+    plan_feature_id: int
+
+
 class PlanFeaturePlanFeatureResponseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,9 +75,9 @@ class PlanFeaturePlanFeatureResponseSchema(BaseModel):
     author_id: int
     name: str
     price_amount: float
-    benifit: str | None = None
+    benefit: str | None = None
     status: PlansStatus
     plan_billing_type: PlansBillingType
     created_at: datetime
     update_at: datetime
-    features: list[FeatureResponseSchema] = []
+    features: list[PlanFeatureForPlanFeatureResponseSchema] = []

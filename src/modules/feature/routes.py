@@ -238,7 +238,7 @@ def get_plan_feature(
                 "author_id": _plans.author_id,
                 "name": _plans.name,
                 "price_amount": _plans.price_amount,
-                "benifit": _plans.benifit,
+                "benefit": _plans.benefit,
                 "status": _plans.status,
                 "plan_billing_type": _plans.plan_billing_type,
                 "created_at": _plans.created_at,
@@ -248,7 +248,7 @@ def get_plan_feature(
 
         # Append the feature to this plan's 'feat' list
         grouped_data[plan_id]["features"].append(
-            {   
+            {
                 "plan_feature_id": _planfeature.id,
                 "id": _feature.id,
                 "name": _feature.name,
@@ -294,19 +294,18 @@ def register_plan_feature(
 
 
 @feature.delete(
-    "/plan/feature/{id}",
+    "/plan/feature/{plan_feature_id}",
     response_model=SuccessSchema[None],
     status_code=201,
 )
 def delete_plan_feature(
-    id: int,
-    feature_id: int,
+    plan_feature_id: int,
     db: Session = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     if session_user.role != UserRole.ADMIN:
         raise BadRequestException("Invalid route")
-    plan_feature = db.query(PlanFeature).filter_by(id=id).scalar()
+    plan_feature = db.query(PlanFeature).filter_by(id=plan_feature_id).scalar()
 
     if not plan_feature:
         raise NotFoundException("Plan feature not found")
