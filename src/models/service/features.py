@@ -16,10 +16,10 @@ class Feature(Base):
 
     __tablename__ = "features"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(255))
     quantity: Mapped[str] = mapped_column(
         Integer
-    )  # e.g. 'request: 1', 'token: 100', 'translation: 500'
+    )  # e.g. 'request: 1', 'token: 10000', 'translation: 500'
     unit: Mapped[FeatureUnit] = mapped_column(Enum(FeatureUnit))
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)

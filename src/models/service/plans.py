@@ -10,8 +10,16 @@ from ..enums import PlansBillingType, PlansStatus
 class Plans(Base):
     """
     Plan table
-    store free, medium, pro type
+    stores free, medium, pro type
     of plans for users
+
+    Args:
+        - author_id (int):
+        - price_amount (float):
+        - price_currency (str):
+        - benefit (str):
+        - plan_billing_type (PlansBillingType):
+        - status (PlanStatus):
     """
 
     __tablename__ = "plans"
@@ -21,8 +29,8 @@ class Plans(Base):
     price_amount: Mapped[float] = mapped_column(Numeric(scale=2))
     name: Mapped[str] = mapped_column(String(50))
     price_currency: Mapped[str] = mapped_column(String(20), default="INR")
-    benifit: Mapped[str] = mapped_column(String(300))
-    billing_type: Mapped[PlansBillingType] = mapped_column(Enum(PlansBillingType))
+    benefit: Mapped[str] = mapped_column(String(300))
+    plan_billing_type: Mapped[PlansBillingType] = mapped_column(Enum(PlansBillingType))
     status: Mapped[PlansStatus] = mapped_column(Enum(PlansStatus))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime_utc_now

@@ -16,6 +16,7 @@ class Movie(Base):
     year: Mapped[int | None] = mapped_column(Integer)
     title_id: Mapped[int] = mapped_column(ForeignKey("titles.id"))
     unique_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    language_code: Mapped[str] = mapped_column(VARCHAR(10))
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime_utc_now, onupdate=datetime_utc_now

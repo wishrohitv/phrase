@@ -55,7 +55,6 @@ def generate_sku_before_insert(mapper, connection, target: Messages):
         target.status = ChatMessageStatus.PENDING
     else:
         target.status = ChatMessageStatus.SUCCESS
-        target.message_uid = uuid.uuid4()
 
 
 # Hook running BEFORE an UPDATE operation

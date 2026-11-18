@@ -19,6 +19,7 @@ class Episode(Base):
     season_number: Mapped[int] = mapped_column(Integer)
     episode_number: Mapped[int] = mapped_column(Integer)
     unique_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    language_code: Mapped[str] = mapped_column(VARCHAR(10))
     created_at: Mapped[datetime] = mapped_column(default=datetime_utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime_utc_now, onupdate=datetime_utc_now

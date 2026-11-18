@@ -123,8 +123,10 @@ class FeatureUnit(str, PyEnum):
 
 class SubscriptionStatus(str, PyEnum):
     ACTIVE = "active"
-    SUSPENDED = "suspended"
-    EXPIRED = "expired"
+    CANCELLED = "canceled"
+    PAST_DUE = "past_due"
+    UNPAID = "unpaid"
+    TRIALING = "trialing"
 
 
 class PlansStatus(str, PyEnum):
@@ -135,6 +137,35 @@ class PlansStatus(str, PyEnum):
 class PlansBillingType(str, PyEnum):
     MONTHLY = "monthly"
     YEARLY = "yearly"
+
+
+class EventType(str, PyEnum):
+    CREATED = "created"
+    UPDATED = "updated"
+    STATUS_CHANGED = "status_changed"
+    TRIAL_STARTED = "trial_started"
+    TRIAL_ENDED = "trial_ended"
+    PLAN_CHANGED = "plan_changed"
+    QTY_CHANGED = "qty_changed"
+    PAYMENT_FAILED = "payment_failed"
+    PAYMENT_RECOVERED = "payment_recovered"
+    CANCELED = "canceled"
+    RENEWED = "renewed"
+
+
+class Reason(str, PyEnum):
+    PAYMENT_FAILED = "payment_failed"
+    USER_REQUEST = "user_request"
+    ADMIN_ACTION = "admin_action"
+    DUNNING = "dunning"
+    FRAUD = "fraud"
+
+
+class ActorType(str, PyEnum):
+    USER = "user"
+    ADMIN = "admin"
+    SYSTEM = "system"
+    PROVIDER = "provider"
 
 
 class DiscoverType(str, PyEnum):
