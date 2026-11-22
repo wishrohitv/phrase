@@ -1,6 +1,6 @@
 from fastapi import Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import Users
@@ -11,10 +11,10 @@ from .auth_middleware import auth_middleware
 from .subscription_middleware import subscription_middleware
 
 
-def chat_usage_middleware(
+async def chat_usage_middleware(
         subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
     user: Users = Depends(auth_middleware),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     """
     Check allowed chat usage limit based on user's current plan
@@ -25,18 +25,18 @@ def chat_usage_middleware(
         - Return True if under limit else False
     """
     # feature_id is chat: should be clear
-    feature = (
+    feature = await (
         db.query(PlanFeature).filter_by(plan_id=subscription.plan_id, feature_id=2).first()
     )
 
     # Sum all token used
-    total_chat_token = (
+    total_chat_token = await (
         db.query(func.sum(FeatureUsage.id))
         .filter_by(user_id=user.id, feature_id=2)
         .scalar()
     )
 
-    llm_usage = (
+    llm_usage = await (
         db.query(func.coalesce(func.sum(LLMUsage.total_tokens), 0))
         .filter_by(subscription_id=subscription.id)
         .scalar()

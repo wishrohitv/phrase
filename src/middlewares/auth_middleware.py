@@ -2,7 +2,8 @@ from logging import getLogger
 
 import jwt
 from fastapi import Cookie, Depends, Header, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models.users import Users
@@ -17,10 +18,10 @@ from utils.jwt_token import decode_jwt_token
 logger = getLogger(__name__)
 
 
-def auth_middleware(
+async def auth_middleware(
     authorization: str | None = Header(None),
     access_token: str = Cookie(None),
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ) -> Users:
 
     try:
@@ -37,10 +38,8 @@ def auth_middleware(
             token, settings.ACCESS_TOKEN_SECRET_KEY.get_secret_value()
         )
 
-        user = (
-            db.query(Users)
-            .filter_by(id=decode_token.get("data", {}).get("user_id"))
-            .first()
+        user = await db.scalar(
+            select(Users).filter_by(id=decode_token.get("data", {}).get("user_id"))
         )
         if not user:
             raise UnauthorizedException("User not found")

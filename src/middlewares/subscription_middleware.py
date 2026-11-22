@@ -1,5 +1,5 @@
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from middlewares import auth_middleware
@@ -14,21 +14,21 @@ it normally executes only once for that request.
 """
 
 
-def subscription_middleware(
+async def subscription_middleware(
     user: Users = Depends(auth_middleware),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ) -> Subscription:
     """
     This middleware checks if the user has an active subscription
     """
 
-    plan = (
+    subs = await (
         db.query(Subscription)
         .filter_by(user_id=user.id, status=SubscriptionStatus.ACTIVE)
         .first()
     )
 
-    if not plan:
+    if not subs:
         raise ForbiddenException("An active subscription is required")
 
-    return plan
+    return subs
