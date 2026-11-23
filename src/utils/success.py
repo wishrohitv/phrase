@@ -5,7 +5,7 @@ from warnings import deprecated
 
 from fastapi import Response
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, StrictInt
+from pydantic import BaseModel, ConfigDict, StrictInt
 
 # T = TypeVar("T")
 
@@ -19,7 +19,7 @@ class PaginatedSchema[T](BaseModel):
     items: list[T]
     # Pydantic can sometimes coerce values unexpectedly when using unions.
     # Preserve the exact type, use StrictInt for int:
-    after_uid: StrictInt | uuid.UUID = None
+    after_uid: StrictInt | uuid.UUID | None = None
     after_date: float | None = None
     has_more: bool = False
 
