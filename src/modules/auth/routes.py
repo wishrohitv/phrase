@@ -6,7 +6,9 @@ import bcrypt
 import jwt
 from fastapi import APIRouter, Body, Cookie, Depends, Header, Response
 from redis_fastapi import CacheBackendDep
-from sqlalchemy.orm import Session
+from sqlalchemy import select, update
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from middlewares.auth_middleware import auth_middleware
@@ -43,10 +45,10 @@ auth = APIRouter(prefix="/auth", tags=["Auth"])
 @auth.post("/register", response_model=SuccessSchema, status_code=201)
 async def register_user(
     user_data: UserRegisterSchema,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
 
-    user = db.query(Users).filter(Users.email == user_data.email).first()
+    user = await db.scalar(select(Users).filter(Users.email == user_data.email))
     if user:
         raise BadRequestException("Email already registered")
     new_user = Users(
@@ -59,8 +61,8 @@ async def register_user(
         native_language=user_data.native_language,
     )
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    await db.commit()
+    await db.refresh(new_user)
     return SuccessSchema(
         data=UserRegisterResponseSchema(user_id=new_user.id),
         message="Account created successfully",
@@ -73,9 +75,9 @@ async def register_user(
 async def login_user(
     user_data: UserLoginSchema,
     response: Response,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
-    user = db.query(Users).filter(Users.email == user_data.email).first()
+    user = await db.scalar(select(Users).filter(Users.email == user_data.email))
     if not user:
         raise BadRequestException("Invalid email or password")
     if not bcrypt.checkpw(user_data.password.encode("utf-8"), user.password):
@@ -91,9 +93,9 @@ async def login_user(
         expire_in_minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES,
     )
 
-    session = Sessions(user_id=user.id, refresh_token=refresh_token)
-    db.add(session)
-    db.commit()
+    AsyncSession = Sessions(user_id=user.id, refresh_token=refresh_token)
+    db.add(AsyncSession)
+    await db.commit()
 
     response.set_cookie(
         "access_token",
@@ -118,7 +120,7 @@ async def logout(
     response: Response,
     x_refresh_token: str | None = Header(None),  # Mobile
     refresh_token: str | None = Cookie(None),  # Browser
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     all_devices: bool = False,
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
@@ -126,16 +128,21 @@ async def logout(
     if not _refresh_token:
         raise BadRequestException("Refresh token required")
 
+    stmt = update(Sessions).values(refresh_token=None)
+
     if all_devices:
-        db.query(Sessions).filter(
-            Sessions.user_id == session_user.id, Sessions.refresh_token != None
-        ).update(values={"refresh_token": None}, synchronize_session="evaluate")
+        stmt = stmt.where(
+            Sessions.user_id == session_user.id,
+            Sessions.refresh_token.is_not(None),
+        )
     else:
-        db.query(Sessions).filter(
+        stmt = stmt.where(
             Sessions.user_id == session_user.id,
             Sessions.refresh_token == _refresh_token,
-        ).update(values={"refresh_token": None}, synchronize_session="evaluate")
-    db.commit()
+        )
+
+    await db.execute(stmt)
+    await db.commit()
 
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
@@ -149,7 +156,7 @@ async def logout(
 )
 async def refresh_token(
     response: Response,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     x_refresh_token: str = Header(None),
     refresh_token: str = Cookie(None),
 ):
@@ -166,18 +173,16 @@ async def refresh_token(
         decode_token = decode_jwt_token(
             token, settings.REFRESH_TOKEN_SECRET_KEY.get_secret_value()
         )
-        session = (
-            db.query(Sessions)
-            .filter_by(
+        session = await db.scalar(
+            select(Sessions).filter_by(
                 refresh_token=token,
                 user_id=decode_token.get("data", {}).get("user_id"),
             )
-            .first()
         )
         if not session:
             raise UnauthorizedException("Invalid access token")
 
-        user = db.query(Users).filter_by(id=session.user_id).first()
+        user = await db.scalar(select(Users).filter_by(id=session.user_id))
         access_token = create_jwt_token(
             data={"user_id": user.id},
             secret_key=settings.ACCESS_TOKEN_SECRET_KEY.get_secret_value(),
@@ -192,11 +197,11 @@ async def refresh_token(
         # Add new token
         new_session = Sessions(user_id=user.id, refresh_token=refresh_token)
         db.add(new_session)
-        db.commit()
+        await db.commit()
 
         # Delete the existing token
         session.refresh_token = None
-        db.commit()
+        await db.commit()
 
         response.set_cookie(
             "access_token",
@@ -230,10 +235,10 @@ async def refresh_token(
 async def generate_opt(
     redis: CacheBackendDep,
     email: Annotated[str, Body(embed=True)],
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     redis_key = f"otp:{email}"
-    user = db.query(Users).filter_by(email=email).scalar()
+    user = await db.query(Users).filter_by(email=email).scalar()
 
     if not user:
         raise NotFoundException("User not found")
@@ -253,7 +258,7 @@ async def validate_opt(
     redis: CacheBackendDep,
     email: Annotated[str, Body(embed=True)],
     otp: Annotated[int, Body(embed=True, min_length=6, max_length=6)],
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     redis_key = f"verify-user:otp:{email}"
 
@@ -265,7 +270,7 @@ async def validate_opt(
     if otp != redi_otp:
         raise BadRequestException("Invalid OTP")
 
-    user = db.query(Users).filter_by(email=email).scalar()
+    user = await db.query(Users).filter_by(email=email).scalar()
 
     if not user:
         raise NotFoundException("User not found")
@@ -274,7 +279,7 @@ async def validate_opt(
 
     user.is_verified = True
 
-    db.commit()
+    await db.commit()
 
     return SuccessSchema(message="User verified successfully")
 
@@ -285,11 +290,11 @@ async def validate_opt(
 async def reset_password(
     reset_schema: UserRequestResetPasswordSchema,
     redis: CacheBackendDep,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     redis_key = f"request-reset-password:otp:{reset_schema.email}"
 
-    user = db.query(Users).filter_by(email=reset_schema.email).scalar()
+    user = await db.query(Users).filter_by(email=reset_schema.email).scalar()
     if not user:
         raise NotFoundException("User not found")
 
@@ -307,7 +312,7 @@ async def reset_password(
 async def verify_password(
     reset_schema: UserVerifyResetPasswordSchema,
     redis: CacheBackendDep,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     redis_key = f"request-reset-password:otp:{reset_schema.email}"
 
@@ -319,7 +324,7 @@ async def verify_password(
     if reset_schema.otp != otp:
         raise BadRequestException("Invalid OTP")
 
-    user = db.query(Users).filter_by(email=reset_schema.email).scalar()
+    user = await db.query(Users).filter_by(email=reset_schema.email).scalar()
     if not user:
         raise NotFoundException("User not found")
 
@@ -328,5 +333,5 @@ async def verify_password(
         bcrypt.gensalt(rounds=settings.SALT_ROUNDS),
     )
 
-    db.commit()
+    await db.commit()
     return SuccessSchema(message="Password reseted successfully")
