@@ -6,7 +6,8 @@ This route is for app's service and to manage feature
 import logging
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from middlewares.auth_middleware import auth_middleware
@@ -35,8 +36,8 @@ logger = logging.getLogger(__name__)
     response_model=SuccessSchema[list[FeatureResponseSchema]],
     status_code=200,
 )
-def get_feature(
-    db: Session = Depends(get_db),  # noqa: B008
+async def get_feature(
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     """
@@ -45,7 +46,7 @@ def get_feature(
     """
     if session_user.role != UserRole.ADMIN:
         raise BadRequestException("Invalid route")
-    _features = db.query(Feature).all()
+    _features = await db.scalars(select(Feature))
 
     return SuccessSchema(
         data=[FeatureResponseSchema.model_validate(_feature) for _feature in _features]
@@ -57,9 +58,9 @@ def get_feature(
     response_model=SuccessSchema[FeatureSchema],
     status_code=201,
 )
-def register_feature(
+async def register_feature(
     feature_data: FeatureSchema,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     """
@@ -79,8 +80,8 @@ def register_feature(
         unit=feature_data.unit,
     )
     db.add(new_feature)
-    db.commit()
-    db.refresh(new_feature)
+    await db.commit()
+    await db.refresh(new_feature)
     return SuccessSchema(data=FeatureSchema.model_validate(new_feature))
 
 
@@ -89,9 +90,9 @@ def register_feature(
     response_model=SuccessSchema[list[PlansResponseSchema]],
     status_code=200,
 )
-def get_plans(
+async def get_plans(
     status: PlansStatus = PlansStatus.ACTIVE,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     """
@@ -104,7 +105,7 @@ def get_plans(
     """
     if session_user.role != UserRole.ADMIN:
         raise BadRequestException("Invalid route")
-    plans = db.query(Plans).filter_by(status=status).all()
+    plans = await db.scalars(select(Plans).filter_by(status=status))
     data = [PlansResponseSchema.model_validate(plan) for plan in plans]
 
     return SuccessSchema(data=data, message="Fetched plans successfully")
@@ -115,9 +116,9 @@ def get_plans(
     response_model=SuccessSchema[PlansResponseSchema],
     status_code=201,
 )
-def new_plan(
+async def new_plan(
     plans_data: PlansSchema,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     if session_user.role != UserRole.ADMIN:
@@ -126,13 +127,13 @@ def new_plan(
         name=plans_data.name,
         author_id=session_user.id,
         price_amount=plans_data.price_amount,
-        benifit=plans_data.benifit,
+        benefit=plans_data.benefit,
         status=plans_data.status,
         plan_billing_type=plans_data.plan_billing_type,
     )
 
     db.add(new_plan)
-    db.commit()
+    await db.commit()
     return SuccessSchema(
         data=PlansResponseSchema.validate(new_plan),
         message="Plans added successfully",
@@ -140,32 +141,34 @@ def new_plan(
 
 
 @feature.patch("/plan", response_model=SuccessSchema, status_code=201)
-def edit_plan(
+async def edit_plan(
     plans_data: EditPlansSchema,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     if session_user.role != UserRole.ADMIN:
         raise BadRequestException("Invalid route")
 
-    plan = db.query(Plans).filter_by(id=plans_data.id).scalar()
-    if plans_data.price is not None:
-        plan.price = plans_data.price
-    if plans_data.benifit is not None:
-        plan.benifit = plans_data.benifit
+    plan = await db.scalar(select(Plans).filter_by(id=plans_data.id))
+    if not plan:
+        raise NotFoundException("Plan not found")
+    if plans_data.price_amount is not None:
+        plan.price_amount = plans_data.price_amount
+    if plans_data.benefit is not None:
+        plan.benefit = plans_data.benefit
     if plans_data.status:
         plan.status = plans_data.status
 
-    db.commit()
+    await db.commit()
     return SuccessSchema(
         message="Plans updated successfully",
     )
 
 
 @feature.delete("/plan/{plan_id}", response_model=SuccessSchema, status_code=200)
-def delete_plan(
+async def delete_plan(
     plan_id: int,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     """
@@ -181,13 +184,13 @@ def delete_plan(
     if session_user.role != UserRole.ADMIN:
         raise BadRequestException("Invalid route")
 
-    plan = db.query(Plans).filter_by(id=plan_id).scalar()
+    plan = await db.scalar(select(Plans).filter_by(id=plan_id))
 
     if not plan:
         raise NotFoundException("Plan not found")
 
-    db.delete(plan)
-    db.commit()
+    await db.delete(plan)
+    await db.commit()
 
     return SuccessSchema(message="Plans deleted successfully")
 
@@ -197,10 +200,10 @@ def delete_plan(
     response_model=SuccessSchema[list[PlanFeaturePlanFeatureResponseSchema]],
     status_code=200,
 )
-def get_plan_feature(
+async def get_plan_feature(
     plan_status: PlansStatus | None = None,
     billing_type: PlansBillingType | None = None,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     if session_user.role != UserRole.ADMIN:
@@ -208,13 +211,13 @@ def get_plan_feature(
     # process_data.delay(
     #     2, 4
     # )  # push task to the redis queue without blocking main thread
-    plan_features = (
-        db.query(PlanFeature, Plans, Feature)
+    stmt = (
+        select(PlanFeature, Plans, Feature)
         .join(Plans, Plans.id == PlanFeature.plan_id)
         .join(Feature, Feature.id == PlanFeature.feature_id)
         .order_by(PlanFeature.plan_id.desc())
     )
-
+    plan_features = await db.execute(stmt)
     if plan_status:
         plan_features = plan_features.filter(Plans.status == plan_status)
     if billing_type:
@@ -273,9 +276,9 @@ def get_plan_feature(
     response_model=SuccessSchema[PlanFeatureResponseSchema],
     status_code=201,
 )
-def register_plan_feature(
+async def register_plan_feature(
     plan_feature_data: PlanFeatureSchema,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     if session_user.role != UserRole.ADMIN:
@@ -286,8 +289,8 @@ def register_plan_feature(
         usage_limit=plan_feature_data.usage_limit,
     )
     db.add(new_plan_feature)
-    db.commit()
-    db.refresh(new_plan_feature)
+    await db.commit()
+    await db.refresh(new_plan_feature)
     return SuccessSchema(
         data=PlanFeatureResponseSchema.model_validate(new_plan_feature)
     )
@@ -298,20 +301,20 @@ def register_plan_feature(
     response_model=SuccessSchema[None],
     status_code=201,
 )
-def delete_plan_feature(
+async def delete_plan_feature(
     plan_feature_id: int,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     session_user: Users = Depends(auth_middleware),  # noqa: B008
 ):
     if session_user.role != UserRole.ADMIN:
         raise BadRequestException("Invalid route")
-    plan_feature = db.query(PlanFeature).filter_by(id=plan_feature_id).scalar()
+    plan_feature = await db.scalar(select(PlanFeature).filter_by(id=plan_feature_id))
 
     if not plan_feature:
         raise NotFoundException("Plan feature not found")
 
-    db.delete(plan_feature)
+    await db.delete(plan_feature)
 
-    db.commit()
+    await db.commit()
 
     return SuccessSchema(message="Feature removed from plan feature successfully")
