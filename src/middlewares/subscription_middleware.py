@@ -1,4 +1,5 @@
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -22,10 +23,10 @@ async def subscription_middleware(
     This middleware checks if the user has an active subscription
     """
 
-    subs = await (
-        db.query(Subscription)
-        .filter_by(user_id=user.id, status=SubscriptionStatus.ACTIVE)
-        .first()
+    subs = await db.scalar(
+        select(Subscription).filter_by(
+            user_id=user.id, status=SubscriptionStatus.ACTIVE
+        )
     )
 
     if not subs:
