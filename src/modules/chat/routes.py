@@ -8,7 +8,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import RedirectResponse
 from fastapi.sse import EventSourceResponse
 from redis_fastapi import CacheBackendDep, cache
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import and_, or_
 
 from database import get_db
@@ -45,7 +46,7 @@ async def user_chats(
     after_date: float | None = Query(None, description="Last created_at"),
     limit: int = Query(20, ge=1, le=50),
     user: Users = Depends(auth_middleware),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     """
     List all chats
@@ -58,14 +59,14 @@ async def user_chats(
         - SuccessSchema[PaginatedSchema[list[UserChatsResponseSchema]]]: List of chats
     """
 
-    query = (
-        db.query(Chats)
+    stmt = (
+        select(Chats)
         .filter_by(owner_id=user.id)
         .order_by(Chats.updated_at.desc(), Chats.uid.desc())
     )
     # Apply keyset filter
     if after_uid is not None and after_date is not None:
-        query = query.filter(
+        stmt = stmt.filter(
             or_(
                 Chats.updated_at < datetime_from_unix(after_date),
                 and_(
@@ -74,7 +75,9 @@ async def user_chats(
                 ),
             )
         )
-    items = query.limit(limit + 1).all()
+    stmt = stmt.limit(limit + 1)
+
+    items = (await db.scalars(stmt)).all()
 
     has_more = len(items) > limit
 
@@ -97,10 +100,10 @@ async def user_chats(
 async def create_chat_session(
     message_data: ChatMessageSchema,
     user: Users = Depends(auth_middleware),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     """
-    Create new chat session, generate chat uid
+    Create new chat AsyncSession, generate chat uid
 
     Args:
         - message_data (ChatMessageSchema):
@@ -116,8 +119,8 @@ async def create_chat_session(
         owner_id=user.id,
     )
     db.add(new_chat)
-    db.commit()
-    db.refresh(new_chat)
+    await db.commit()
+    await db.refresh(new_chat)
     return RedirectResponse(f"/api/chat/{new_chat.uid}/message")
 
 
@@ -125,7 +128,7 @@ async def create_chat_session(
 async def delete_chat_session(
     uid: uuid.UUID,
     user: Users = Depends(auth_middleware),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     """
     Delete user's chats along with messages
@@ -137,26 +140,27 @@ async def delete_chat_session(
     Raises:
         - BadRequestException: If chat not found
     """
-    chat = (
-        db.query(Chats)
-        .where(
+    chat = await db.scalar(
+        select(Chats).where(
             and_(
                 Chats.uid == uid,
                 Chats.owner_id == user.id,
             )
         )
-        .first()
     )
     if not chat:
         raise BadRequestException("Chat not found")
-    db.delete(chat)
-    db.commit()
-    return SuccessSchema("Chat deleted successfully")
+    # The deployed database still has the old FK without ON DELETE CASCADE,
+    # so delete the messages explicitly before deleting the chat.
+    await db.execute(delete(Messages).filter(Messages.chat_uid == uid))
+    await db.delete(chat)
+    await db.commit()
+    return SuccessSchema(message="Chat deleted successfully")
 
 
 @chats.get(
     "/{uid}/message",
-    dependencies=[Depends(cache(ttl=60 * 60 * 24 * 3, eviction_group="chat_message"))],
+    # dependencies=[Depends(cache(ttl=60 * 60 * 24 * 3, eviction_group="chat_message"))],
     response_model=SuccessSchema[PaginatedSchema[ChatMessageResponseSchema]],
     status_code=200,
 )
@@ -166,7 +170,7 @@ async def get_chat_message(
     after_date: float | None = Query(None, description="Last created_at"),
     limit: int = Query(10, ge=1, le=50),
     user: Users = Depends(auth_middleware),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ):
     """
     Get all chat messages in descending order
@@ -179,15 +183,15 @@ async def get_chat_message(
     Returns:
         - SuccessSchema[PaginatedSchema[list[ChatMessageResponseSchema]]: Paginated model
     """
-    query = (
-        db.query(Messages)
+    stmt = (
+        select(Messages)
         .filter_by(chat_uid=uid)
         .order_by(Messages.created_at.desc(), Messages.id.desc())
     )
 
     # Aply the keyset filter
     if after_uid is not None and after_date is not None:
-        query = query.filter(
+        stmt = stmt.filter(
             or_(
                 Messages.created_at < datetime_from_unix(after_date),
                 and_(
@@ -197,7 +201,7 @@ async def get_chat_message(
             )
         )
 
-    items = query.limit(limit + 1).all()
+    items = (await db.scalars(stmt.limit(limit + 1))).all()
 
     has_more = len(items) > limit
 
@@ -225,7 +229,7 @@ async def chat(
     message_data: ChatMessageSchema,  # Expect body contain entire history of chat along with latest prompt
     redis: CacheBackendDep,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
     user: Users = Depends(auth_middleware),  # noqa: B008
     subscription: Subscription = Depends(subscription_middleware),  # noqa: B008
     featrue_usage=Depends(chat_usage_middleware),  # noqa: B008
@@ -256,14 +260,12 @@ async def chat(
         )
         return
     # Check if db for existing assistans's response for given message_uid
-    db_message = (
-        db.query(Messages)
-        .filter_by(
+    db_message = await db.scalar(
+        select(Messages).filter_by(
             chat_uid=uid,
             message_uid=message_data.message_uid,
             role=ChatRoleType.ASSISTANT,
         )
-        .first()
     )
 
     if db_message:
@@ -287,8 +289,8 @@ async def chat(
         message_uid=message_data.message_uid,
     )
     db.add(new_message)
-    db.commit()
-    db.refresh(new_message)
+    await db.commit()
+    await db.refresh(new_message)
 
     # Store user message's embbeding
     background_tasks.add_task(
@@ -307,12 +309,13 @@ async def chat(
     # fetch from db and store in cache
     if not stored_chat_history:
         chat_history = (
-            db.query(Messages.content, Messages.role)
-            .filter_by(chat_uid=uid)
-            .order_by(Messages.created_at.desc())
-            .limit(MESSAGE_WINDOW_LENGTH)
-            .all()
-        )
+            await db.execute(
+                select(Messages.content, Messages.role)
+                .filter_by(chat_uid=uid)
+                .order_by(Messages.created_at.desc())
+                .limit(MESSAGE_WINDOW_LENGTH)
+            )
+        ).all()
 
         if chat_history:
             _chat_history: list = []
@@ -364,7 +367,7 @@ async def chat(
             message_uid=message_data.message_uid,
         )
         db.add(agent_res)
-        db.commit()
+        await db.commit()
 
         # Cache agent message with message_uid
         await redis.set(REDIS_MESSAGE_KEY, full_response, ttl=REDIS_MESSAGE_KEY_EXP)
