@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from middlewares.auth_middleware import auth_middleware
 from models import PlansBillingType, PlansStatus, UserRole, Users
-from models.service import Feature, PlanFeature, Plans
+from models.service import Feature, PlanFeature, Plans, ProviderProduct
 from utils.errors import BadRequestException, NotFoundException
 from utils.success import SuccessSchema
 
@@ -23,6 +23,8 @@ from .pydantic_schema import (
     PlanFeaturePlanFeatureResponseSchema,
     PlanFeatureResponseSchema,
     PlanFeatureSchema,
+    PlanProviderResponseSchema,
+    PlanProviderSchema,
     PlansResponseSchema,
     PlansSchema,
 )
@@ -318,3 +320,48 @@ async def delete_plan_feature(
     await db.commit()
 
     return SuccessSchema(message="Feature removed from plan feature successfully")
+
+
+@feature.post(
+    "/plan/provider",
+    response_model=SuccessSchema[PlanProviderResponseSchema],
+    status_code=201,
+)
+async def plan_provider(
+    plan_provider_data: PlanProviderSchema,
+    db: AsyncSession = Depends(get_db),  # noqa: B008
+    session_user: Users = Depends(auth_middleware),  # noqa: B008
+):
+    if session_user.role != UserRole.ADMIN:
+        raise BadRequestException("Invalid route")
+    print(plan_provider_data.dict(), "test")
+    plan = await db.scalar(select(Plans).filter_by(id=plan_provider_data.plan_id))
+
+    if not plan:
+        raise NotFoundException("Plan not found")
+
+    # TODO: before storing validate plan(product) from provider to ensure admin has entered correct product_id
+
+    existing_provider_product = await db.scalar(
+        select(ProviderProduct).filter_by(
+            product_id=plan_provider_data.product_id,
+        ),
+    )
+
+    return SuccessSchema(
+        data=PlanProviderResponseSchema.model_validate(existing_provider_product)
+    )
+
+    provider_product = ProviderProduct(
+        provider=plan_provider_data.provider,
+        plan_id=plan_provider_data.plan_id,
+        product_id=plan_provider_data.product_id,
+    )
+
+    db.add(provider_product)
+    await db.commit()
+    await db.refresh(provider_product)
+
+    return SuccessSchema(
+        data=PlanProviderResponseSchema.model_validate(provider_product)
+    )

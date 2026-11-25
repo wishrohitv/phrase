@@ -2,7 +2,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from models import FeatureUnit, PlansBillingType, PlansStatus
+from models import FeatureUnit, PaymentProviderType, PlansBillingType, PlansStatus
 from utils.datetime_utc import datetime
 
 
@@ -81,3 +81,17 @@ class PlanFeaturePlanFeatureResponseSchema(BaseModel):
     created_at: datetime
     update_at: datetime
     features: list[PlanFeatureForPlanFeatureResponseSchema] = []
+
+
+class PlanProviderSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    plan_id: int
+    provider: PaymentProviderType
+    product_id: str
+
+
+class PlanProviderResponseSchema(PlanProviderSchema):
+    id: int
+    created_at: datetime
+    updated_at: datetime
