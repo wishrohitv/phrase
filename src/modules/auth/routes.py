@@ -16,7 +16,6 @@ from models.sessions import Sessions
 from models.users import Users
 from services.mail_service import send_mail
 from settings import settings
-from tasks.celery_app import process_data
 from utils.errors import (
     BadRequestException,
     HTTPException,
