@@ -40,7 +40,6 @@ async def save_subtile_and_parsed_data(
                         title=subtitle_schema.feature_details.title,
                         type=subtitle_schema.feature_details.feature_type,
                         img_url=subtitle_schema.related_links[0].img_url,
-                        author_id=1,  # TODO: pass user_id if needed
                     )
                     db.add(title)
                     await db.flush()
@@ -73,7 +72,6 @@ async def save_subtile_and_parsed_data(
                             title=details.parent_title,
                             type="tvshow",
                             img_url=subtitle_schema.related_links[0].img_url,
-                            author_id=1,
                         )
                         db.add(title)
                         await db.flush()
